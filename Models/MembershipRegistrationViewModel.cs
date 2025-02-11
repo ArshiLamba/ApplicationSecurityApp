@@ -3,7 +3,8 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using ApplicationSecurityApp.Security; // Import EncryptionHelper
+using ApplicationSecurityApp.Security;
+using System.Net; // Import EncryptionHelper
 
 namespace AceJobAgency.ViewModels
 {
@@ -30,7 +31,9 @@ namespace AceJobAgency.ViewModels
         [NotMapped] // Prevent EF from storing plain text password
         [Required]
         [DataType(DataType.Password)]
-        [MinLength(8, ErrorMessage = "Password must be at least 8 characters long.")]
+        [MinLength(12, ErrorMessage = "Password must be at least 12 characters long.")]
+        [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{12,}$",
+            ErrorMessage = "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.")]
         public string Password { get; set; }
 
         [NotMapped]
@@ -54,6 +57,15 @@ namespace AceJobAgency.ViewModels
         {
             var passwordHasher = new PasswordHasher<MembershipRegistrationViewModel>();
             return passwordHasher.HashPassword(this, Password);
+        }
+        // 🛡️ Sanitize inputs to prevent XSS attacks
+        public void SanitizeInputs()
+        {
+            this.FirstName = WebUtility.HtmlEncode(this.FirstName);
+            this.LastName = WebUtility.HtmlEncode(this.LastName);
+            this.NRIC = WebUtility.HtmlEncode(this.NRIC);
+            this.Email = WebUtility.HtmlEncode(this.Email);
+            this.WhoAmI = WebUtility.HtmlEncode(this.WhoAmI);
         }
     }
 }
