@@ -1,0 +1,26 @@
+﻿@using Microsoft.AspNetCore.Http
+@inject IHttpContextAccessor HttpContextAccessor
+@model ApplicationSecurityApp.ViewModels.HomeViewModel
+
+@{
+    ViewData["Title"] = "Home Page";
+    var userId = HttpContextAccessor.HttpContext.Session.GetInt32("UserId");
+}
+
+<div class="text-center">
+    @if (userId != null)
+    {
+        <h1 class="display-4">Welcome, @Model.FirstName @Model.LastName</h1>
+        <p><strong>Email:</strong> @Model.Email</p>
+        <p><strong>Gender:</strong> @Model.Gender</p>
+        <p><strong>Date of Birth:</strong> @Model.DateOfBirth.ToString("dd MMM yyyy")</p>
+        <p><strong>Decrypted NRIC:</strong> @Model.DecryptedNRIC</p>
+
+        <a asp-action="ChangePassword" asp-controller="Account" class="btn btn-warning">Change Password</a>
+    }
+    else
+    {
+        <h1 class="display-4">Welcome</h1>
+        <p>Please <a href="@Url.Action("Login", "Account")">log in</a> to view your details.</p>
+    }
+</div>

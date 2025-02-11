@@ -1,0 +1,10 @@
+﻿@{
+    ViewData["Title"] = "Login Successful";
+}
+
+<div class="text-center mt-5">
+    <h2>✅ Login Successful!</h2>
+    <p>Welcome back, <strong>@User.Identity.Name</strong>! You have successfully logged in.</p>
+    <p>Session ID: <strong>@User.FindFirst("SessionId")?.Value</strong></p>
+    <a asp-controller="Home" asp-action="Index" class="btn btn-primary">Go to Home</a>
+</div>
