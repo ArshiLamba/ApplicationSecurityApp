@@ -13,6 +13,7 @@ using ApplicationSecurityApp.ViewModels;
 using MimeKit;
 using MailKit.Net.Smtp;
 using Microsoft.Extensions.Configuration;
+using ApplicationSecurityApp.Services;
 
 namespace ApplicationSecurityApp.Controllers
 {
@@ -21,12 +22,14 @@ namespace ApplicationSecurityApp.Controllers
         private readonly ApplicationDbContext _context;
         private readonly PasswordHasher<Member> _passwordHasher;
         private readonly IConfiguration _configuration;
+        private readonly ReCaptchaService _reCaptchaService;
 
-        public AccountController(ApplicationDbContext context, IConfiguration configuration)
+        public AccountController(ApplicationDbContext context, IConfiguration configuration, ReCaptchaService reCaptchaService)
         {
             _context = context;
             _passwordHasher = new PasswordHasher<Member>();
             _configuration = configuration;
+            _reCaptchaService = reCaptchaService;
         }
 
         [HttpGet]
@@ -43,6 +46,20 @@ namespace ApplicationSecurityApp.Controllers
         public async Task<IActionResult> Login(LoginViewModel model)
         {
             if (!ModelState.IsValid) return View(model);
+
+            // Verify reCAPTCHA token
+            if (string.IsNullOrEmpty(model.ReCaptchaToken))
+            {
+                ModelState.AddModelError("", "Invalid reCAPTCHA token.");
+                return View(model);
+            }
+
+            var isHuman = await _reCaptchaService.VerifyTokenAsync(model.ReCaptchaToken);
+            if (!isHuman)
+            {
+                ModelState.AddModelError("", "reCAPTCHA verification failed. Please try again.");
+                return View(model);
+            }
 
             var user = await _context.Members.FirstOrDefaultAsync(m => m.Email.ToLower() == model.Email.ToLower());
 
@@ -102,10 +119,10 @@ namespace ApplicationSecurityApp.Controllers
 
             var claims = new[]
             {
-                new Claim(ClaimTypes.Name, user.Email),
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim("SessionId", user.SessionId)
-            };
+        new Claim(ClaimTypes.Name, user.Email),
+        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new Claim("SessionId", user.SessionId)
+    };
 
             var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
             var authProperties = new AuthenticationProperties
@@ -119,6 +136,7 @@ namespace ApplicationSecurityApp.Controllers
 
             return RedirectToAction("LoginSuccess", "Account");
         }
+
 
         public async Task<IActionResult> Logout()
         {

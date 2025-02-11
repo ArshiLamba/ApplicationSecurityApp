@@ -16,7 +16,7 @@
     </div>
 }
 
-<form asp-action="Login" method="post">
+<form id="loginForm" asp-action="Login" method="post">
     @Html.AntiForgeryToken()
 
     <div class="form-group">
@@ -36,16 +36,40 @@
         <label asp-for="RememberMe" class="form-check-label">Remember Me</label>
     </div>
 
-    <button type="submit" class="btn btn-primary mt-3">Login</button>
+    <input type="hidden" id="g-recaptcha-response" name="ReCaptchaToken" />
+ 
 
 
+    <button type="submit" id="loginButton" class="btn btn-primary mt-3">Login</button>
 
     <p><a href="@Url.Action("ForgotPassword", "Account")">Forgot Password?</a></p>
-
 </form>
 
 @section Scripts {
-    @{
-        await Html.RenderPartialAsync("_ValidationScriptsPartial");
-    }
+    @await Html.PartialAsync("_ValidationScriptsPartial")
+
+    <script src="https://www.google.com/recaptcha/api.js?render=6LfJjtMqAAAAAHQ9K009AZ2CqlNxgF1BOdN6Ja5l"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const loginForm = document.getElementById("loginForm");
+            const loginButton = document.getElementById("loginButton");
+
+            loginForm.addEventListener("submit", function (event) {
+                event.preventDefault(); // Stop form submission
+
+                loginButton.disabled = true; // Prevent multiple submissions
+
+                grecaptcha.ready(function () {
+                    grecaptcha.execute("6LfJjtMqAAAAAHQ9K009AZ2CqlNxgF1BOdN6Ja5l", { action: "login" }).then(function (token) {
+                        document.getElementById("g-recaptcha-response").value = token;
+                        loginForm.submit(); // ✅ Submit the form after getting the token
+                    }).catch(function (error) {
+                        console.error("reCAPTCHA error:", error);
+                        alert("reCAPTCHA verification failed. Please try again.");
+                        loginButton.disabled = false; // Re-enable button on failure
+                    });
+                });
+            });
+        });
+    </script>
 }
