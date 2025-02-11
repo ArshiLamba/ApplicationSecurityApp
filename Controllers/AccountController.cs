@@ -266,26 +266,38 @@ namespace ApplicationSecurityApp.Controllers
         {
             if (!ModelState.IsValid) return View(model);
 
-            var user = await _context.Members.FirstOrDefaultAsync(m => m.Email == model.Email);
+            var user = await _context.Members.AsNoTracking()
+                .FirstOrDefaultAsync(m => m.Email == model.Email);
+
             if (user == null)
             {
                 ViewBag.SuccessMessage = "If this email exists, a reset link has been sent.";
                 return View();
             }
 
-            // Generate reset token
+            // Clear any existing reset token before generating a new one
+            _context.Attach(user);
+            user.ResetToken = null;
+            user.ResetTokenExpiry = null;
+            await _context.SaveChangesAsync(); // Save to clear old token
+
+            // Generate a new reset token
             var resetToken = Guid.NewGuid().ToString();
             user.ResetToken = resetToken;
             user.ResetTokenExpiry = DateTime.UtcNow.AddHours(1);
-            await _context.SaveChangesAsync();
 
-            // Send Email
+            await _context.SaveChangesAsync(); // Ensure new token is stored in the database
+
+            // Generate reset link
             var resetLink = $"https://localhost:7009/Account/ResetPassword?token={resetToken}";
+
+            // Send email with a timestamp in subject to avoid email queue issues
             SendPasswordResetEmail(user.Email, resetLink);
 
             ViewBag.SuccessMessage = "If this email exists, a reset link has been sent.";
             return View(); // Stay on the same page to avoid losing the response
         }
+
 
 
         private void SendPasswordResetEmail(string toEmail, string resetLink)
@@ -295,7 +307,9 @@ namespace ApplicationSecurityApp.Controllers
             var email = new MimeMessage();
             email.From.Add(new MailboxAddress(emailSettings["SenderName"], emailSettings["SenderEmail"]));
             email.To.Add(new MailboxAddress("", toEmail));
-            email.Subject = "Password Reset Request";
+
+            // Add timestamp to subject to force refresh in email queue
+            email.Subject = $"Password Reset Request - {DateTime.UtcNow}";
 
             email.Body = new TextPart("plain") { Text = $"Click the link to reset your password: {resetLink}" };
 
@@ -307,6 +321,7 @@ namespace ApplicationSecurityApp.Controllers
                 smtp.Disconnect(true);
             }
         }
+
 
         private string HashPassword(string password) => _passwordHasher.HashPassword(new Member(), password);
 
