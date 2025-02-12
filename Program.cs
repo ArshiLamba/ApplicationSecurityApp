@@ -29,7 +29,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(30); // Session expires after 2 mins
+    options.IdleTimeout = TimeSpan.FromMinutes(2); // Session expires after 2 mins
     options.Cookie.HttpOnly = true; // Prevent JS access
     options.Cookie.IsEssential = true;
 });
@@ -83,6 +83,51 @@ app.Use(async (context, next) =>
 
     await next();
 });
+
+app.Use(async (context, next) =>
+{
+    var sessionStart = context.Session.GetString("SessionStart");
+    var userId = context.Session.GetInt32("UserId");
+
+    if (sessionStart != null)
+    {
+        DateTime startTime = DateTime.Parse(sessionStart);
+        if (DateTime.UtcNow.Subtract(startTime).TotalMinutes > 2)
+        {
+            Console.WriteLine("🔴 Session expired. Logging out user.");
+
+            // ✅ Clear session from database
+            if (userId.HasValue)
+            {
+                using var scope = app.Services.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                var user = await dbContext.Members.FirstOrDefaultAsync(m => m.Id == userId);
+
+                if (user != null)
+                {
+                    user.SessionId = null; // Clear session ID in database
+                    dbContext.Update(user);
+                    await dbContext.SaveChangesAsync();
+                    Console.WriteLine($"🔄 Cleared SessionId for User ID {userId}");
+                }
+            }
+
+            // ✅ Clear session & sign out
+            context.Session.Clear();
+            await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            context.Response.Redirect("/Account/Login?sessionExpired=true");
+            return;
+        }
+    }
+    else
+    {
+        context.Session.SetString("SessionStart", DateTime.UtcNow.ToString());
+    }
+
+    await next();
+});
+
+
 
 app.MapControllerRoute(
     name: "default",
