@@ -58,7 +58,7 @@ namespace ApplicationSecurityApp.Models
         public string? ResetToken { get; set; } // Store reset token
         public DateTime? ResetTokenExpiry { get; set; } // Expiry time for token
 
-        public bool Is2FAEnabled { get; set; } = false;
+        public bool Is2FAEnabled { get; set; } =true;
         public string? TwoFactorSecret { get; set; } // For Authenticator App
         public string? TwoFactorCode { get; set; } // For SMS-based 2FA
         public DateTime? TwoFactorExpiry { get; set; } // Expiry time for code

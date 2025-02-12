@@ -37,9 +37,15 @@
     </div>
 
     <input type="hidden" id="g-recaptcha-response" name="ReCaptchaToken" />
+
+    @if (ViewData["Requires2FA"] != null)
+    {
+        <div class="alert alert-info">
+            <p>A verification code has been sent to your registered device.</p>
+        </div>
+    }
+
  
-
-
     <button type="submit" id="loginButton" class="btn btn-primary mt-3">Login</button>
 
     <p><a href="@Url.Action("ForgotPassword", "Account")">Forgot Password?</a></p>

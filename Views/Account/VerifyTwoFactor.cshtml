@@ -1,0 +1,10 @@
+﻿@model ApplicationSecurityApp.Models.VerifyTwoCode
+
+<h2>Enter OTP Code</h2>
+<p>An OTP has been sent to your email. It expires in 5 minutes.</p>
+
+<form method="post" asp-action="VerifyTwoFactor">
+    <label>OTP Code</label>
+    <input type="text" asp-for="OtpCode" required />
+    <button type="submit">Verify</button>
+</form>

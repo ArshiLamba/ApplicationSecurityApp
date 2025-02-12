@@ -14,6 +14,8 @@ using MimeKit;
 using MailKit.Net.Smtp;
 using Microsoft.Extensions.Configuration;
 using ApplicationSecurityApp.Services;
+using Microsoft.AspNetCore.Identity.UI.Services;
+using MailKit.Security;
 
 namespace ApplicationSecurityApp.Controllers
 {
@@ -23,6 +25,8 @@ namespace ApplicationSecurityApp.Controllers
         private readonly PasswordHasher<Member> _passwordHasher;
         private readonly IConfiguration _configuration;
         private readonly ReCaptchaService _reCaptchaService;
+
+
 
         public AccountController(ApplicationDbContext context, IConfiguration configuration, ReCaptchaService reCaptchaService)
         {
@@ -41,6 +45,14 @@ namespace ApplicationSecurityApp.Controllers
         [HttpGet]
         public IActionResult ForgotPassword() => View();
 
+        [HttpGet]
+        public IActionResult SendTwoFactorCode() => View();
+
+        [HttpGet]
+        public IActionResult VerifyTwoFactor() => View();
+
+
+
 
         [HttpPost]
         public async Task<IActionResult> Login(LoginViewModel model)
@@ -53,6 +65,7 @@ namespace ApplicationSecurityApp.Controllers
                 ModelState.AddModelError("", "Invalid reCAPTCHA token.");
                 return View(model);
             }
+
 
             var isHuman = await _reCaptchaService.VerifyTokenAsync(model.ReCaptchaToken);
             if (!isHuman)
@@ -99,6 +112,15 @@ namespace ApplicationSecurityApp.Controllers
                 user.IsLockedOut = false;
                 user.FailedLoginAttempts = 0;
             }
+            
+            if (user.Is2FAEnabled)
+            {
+                // Store User ID in session for 2FA verification
+                HttpContext.Session.SetInt32("UserId", user.Id);
+
+                // Redirect to send OTP for 2FA
+                return RedirectToAction("SendTwoFactorCode");
+            }
 
             if (!string.IsNullOrEmpty(user.SessionId))
             {
@@ -116,6 +138,8 @@ namespace ApplicationSecurityApp.Controllers
 
             user.FailedLoginAttempts = 0;
             await _context.SaveChangesAsync();
+           
+
 
             var claims = new[]
             {
@@ -321,6 +345,105 @@ namespace ApplicationSecurityApp.Controllers
                 smtp.Disconnect(true);
             }
         }
+        [HttpPost]
+        public async Task<IActionResult> SendTwoFactorCode(SendTwoFactorCode model)
+        {
+            if (!ModelState.IsValid) return View(model);
+
+            var user = await _context.Members.FirstOrDefaultAsync(m => m.Email.ToLower() == model.Email.ToLower());
+
+            if (user == null || !user.Is2FAEnabled)
+            {
+                ModelState.AddModelError("", "Invalid email or 2FA is not enabled for this account.");
+                return View(model);
+            }
+
+            // Generate a 6-digit OTP
+            var random = new Random();
+            string otpCode = random.Next(100000, 999999).ToString();
+
+            // Hash the OTP before storing it
+            user.TwoFactorCode = HashPassword(otpCode); // Store hashed OTP
+            user.TwoFactorExpiry = DateTime.UtcNow.AddMinutes(5); // OTP valid for 5 minutes
+            await _context.SaveChangesAsync();
+
+            // Send OTP via email
+            SendTwoFactorEmail(user.Email, otpCode); // Send plain OTP to email, not hashed
+
+            // Store user ID in session for verification step
+            HttpContext.Session.SetInt32("UserId", user.Id);
+
+            return RedirectToAction("VerifyTwoFactor");
+        }
+
+        private void SendTwoFactorEmail(string toEmail, string otpCode)
+        {
+            var emailSettings = _configuration.GetSection("EmailSettings");
+
+            var email = new MimeMessage();
+            email.From.Add(new MailboxAddress(emailSettings["SenderName"], emailSettings["SenderEmail"]));
+            email.To.Add(new MailboxAddress("", toEmail));
+
+            // Add timestamp to subject to force refresh in email queue
+            email.Subject = $"Two-Factor Authentication Code - {DateTime.UtcNow}";
+
+            email.Body = new TextPart("plain") { Text = $"Your 2FA code is: {otpCode}. It expires in 5 minutes." };
+
+            using (var smtp = new SmtpClient())
+            {
+                smtp.Connect(emailSettings["SMTPServer"], int.Parse(emailSettings["SMTPPort"]), false);
+                smtp.Authenticate(emailSettings["SMTPUsername"], emailSettings["SMTPPassword"]);
+                smtp.Send(email);
+                smtp.Disconnect(true);
+            }
+        }
+
+
+
+
+        [HttpPost]
+        public async Task<IActionResult> VerifyTwoFactor(VerifyTwoCode model)
+        {
+            var userId = HttpContext.Session.GetInt32("UserId");
+
+            if (userId == null) return RedirectToAction("Login");
+
+            var user = await _context.Members.FindAsync(userId);
+
+            // Check if user exists, OTP is valid, and it's not expired
+            if (user == null || user.TwoFactorExpiry < DateTime.UtcNow ||
+                !VerifyPassword(model.OtpCode, user.TwoFactorCode))
+            {
+                ModelState.AddModelError("", "Invalid or expired OTP.");
+                return View(model);
+            }
+
+            // Clear OTP after successful verification
+            user.TwoFactorCode = null;
+            user.TwoFactorExpiry = null;
+            await _context.SaveChangesAsync();
+
+            // Complete login process
+            var claims = new[]
+            {
+        new Claim(ClaimTypes.Name, user.Email),
+        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new Claim("SessionId", user.SessionId)
+    };
+
+            var claimsIdentity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var authProperties = new AuthenticationProperties
+            {
+                IsPersistent = true,
+                ExpiresUtc = DateTime.UtcNow.AddMinutes(30)
+            };
+
+            await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(claimsIdentity), authProperties);
+            await LogAudit(user.Id, "User logged in via 2FA.");
+
+            return RedirectToAction("LoginSuccess", "Account");
+        }
+
 
 
         private string HashPassword(string password) => _passwordHasher.HashPassword(new Member(), password);
