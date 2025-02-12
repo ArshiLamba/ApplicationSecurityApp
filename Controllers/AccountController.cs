@@ -16,6 +16,7 @@ using Microsoft.Extensions.Configuration;
 using ApplicationSecurityApp.Services;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using MailKit.Security;
+using Microsoft.AspNetCore.Authorization;
 
 namespace ApplicationSecurityApp.Controllers
 {
@@ -60,15 +61,7 @@ namespace ApplicationSecurityApp.Controllers
             if (!ModelState.IsValid) return View(model);
 
             // Verify reCAPTCHA token
-            if (string.IsNullOrEmpty(model.ReCaptchaToken))
-            {
-                ModelState.AddModelError("", "Invalid reCAPTCHA token.");
-                return View(model);
-            }
-
-
-            var isHuman = await _reCaptchaService.VerifyTokenAsync(model.ReCaptchaToken);
-            if (!isHuman)
+            if (string.IsNullOrEmpty(model.ReCaptchaToken) || !await _reCaptchaService.VerifyTokenAsync(model.ReCaptchaToken))
             {
                 ModelState.AddModelError("", "reCAPTCHA verification failed. Please try again.");
                 return View(model);
@@ -82,12 +75,14 @@ namespace ApplicationSecurityApp.Controllers
                 return View(model);
             }
 
+            // Check if account is locked
             if (user.IsLockedOut && user.LockoutEnd > DateTime.UtcNow)
             {
                 ModelState.AddModelError("", "Your account is locked. Please try again later.");
                 return View(model);
             }
 
+            // Verify password before signing in
             if (!VerifyPassword(model.Password, user.Password))
             {
                 user.FailedLoginAttempts++;
@@ -107,21 +102,17 @@ namespace ApplicationSecurityApp.Controllers
                 return View(model);
             }
 
-            if (user.IsLockedOut && user.LockoutEnd <= DateTime.UtcNow)
-            {
-                user.IsLockedOut = false;
-                user.FailedLoginAttempts = 0;
-            }
-            
+            // Reset failed attempts on successful login
+            user.FailedLoginAttempts = 0;
+
+            // Check if 2FA is enabled
             if (user.Is2FAEnabled)
             {
-                // Store User ID in session for 2FA verification
                 HttpContext.Session.SetInt32("UserId", user.Id);
-
-                // Redirect to send OTP for 2FA
                 return RedirectToAction("SendTwoFactorCode");
             }
 
+            // Ensure proper session handling
             if (!string.IsNullOrEmpty(user.SessionId))
             {
                 user.SessionId = null;
@@ -131,16 +122,16 @@ namespace ApplicationSecurityApp.Controllers
             string newSessionId = Guid.NewGuid().ToString();
             user.SessionId = newSessionId;
 
+            // Clear any previous session and set new session values
+            HttpContext.Session.Clear();
             HttpContext.Session.SetString("SessionId", newSessionId);
             HttpContext.Session.SetInt32("UserId", user.Id);
             HttpContext.Session.SetString("UserEmail", user.Email);
             HttpContext.Session.SetString("SessionStart", DateTime.UtcNow.ToString());
 
-            user.FailedLoginAttempts = 0;
             await _context.SaveChangesAsync();
-           
 
-
+            // Create authentication cookie after successful login
             var claims = new[]
             {
         new Claim(ClaimTypes.Name, user.Email),
@@ -162,6 +153,7 @@ namespace ApplicationSecurityApp.Controllers
         }
 
 
+
         public async Task<IActionResult> Logout()
         {
             var userId = HttpContext.Session.GetInt32("UserId");
@@ -170,16 +162,17 @@ namespace ApplicationSecurityApp.Controllers
                 var user = await _context.Members.FirstOrDefaultAsync(m => m.Id == userId);
                 if (user != null)
                 {
-                    user.SessionId = null;
+                    user.SessionId = null; // Clear session ID to prevent reuse
                     await _context.SaveChangesAsync();
                 }
             }
 
-            HttpContext.Session.Clear();
-            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            HttpContext.Session.Clear(); // Clear all session data
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme); // Clear authentication
 
             return RedirectToAction("Login");
         }
+
 
         public IActionResult LoginSuccess()
         {
@@ -405,28 +398,41 @@ namespace ApplicationSecurityApp.Controllers
         public async Task<IActionResult> VerifyTwoFactor(VerifyTwoCode model)
         {
             var userId = HttpContext.Session.GetInt32("UserId");
-
             if (userId == null) return RedirectToAction("Login");
 
             var user = await _context.Members.FindAsync(userId);
+            if (user == null)
+            {
+                ModelState.AddModelError("", "User not found.");
+                return View(model);
+            }
 
-            // Check if user exists, OTP is valid, and it's not expired
-            if (user == null || user.TwoFactorExpiry < DateTime.UtcNow ||
-                !VerifyPassword(model.OtpCode, user.TwoFactorCode))
+            // Check if OTP is valid
+            if (user.TwoFactorExpiry < DateTime.UtcNow || !VerifyPassword(model.OtpCode, user.TwoFactorCode))
             {
                 ModelState.AddModelError("", "Invalid or expired OTP.");
                 return View(model);
             }
 
-            // Clear OTP after successful verification
+            // Clear OTP details after verification
             user.TwoFactorCode = null;
             user.TwoFactorExpiry = null;
+
+            // Ensure a new session ID is assigned
+            user.SessionId = Guid.NewGuid().ToString();
             await _context.SaveChangesAsync();
 
-            // Complete login process
+            // Store user session details
+            HttpContext.Session.Clear();
+            HttpContext.Session.SetString("SessionId", user.SessionId);
+            HttpContext.Session.SetInt32("UserId", user.Id);
+            HttpContext.Session.SetString("UserEmail", user.Email);
+            HttpContext.Session.SetString("SessionStart", DateTime.UtcNow.ToString());
+
+            // Authenticate user after 2FA success
             var claims = new[]
             {
-        new Claim(ClaimTypes.Name, user.Email),
+        new Claim(ClaimTypes.Name, user.Email ?? "Unknown"),
         new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
         new Claim("SessionId", user.SessionId)
     };
@@ -439,10 +445,13 @@ namespace ApplicationSecurityApp.Controllers
             };
 
             await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(claimsIdentity), authProperties);
+            HttpContext.Session.SetString("IsTwoFactorVerified", "true");
             await LogAudit(user.Id, "User logged in via 2FA.");
 
             return RedirectToAction("LoginSuccess", "Account");
         }
+
+
 
 
 

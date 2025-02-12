@@ -6,9 +6,11 @@ using Microsoft.AspNetCore.Http;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace ApplicationSecurityApp.Controllers
 {
+    [Authorize] // Ensure authentication is required for all actions in this controller
     public class HomeController : Controller
     {
         private readonly ILogger<HomeController> _logger;

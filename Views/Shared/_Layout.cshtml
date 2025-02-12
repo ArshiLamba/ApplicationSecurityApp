@@ -38,10 +38,13 @@
                         }
                         else
                         {
-                            <!-- Show Logout when logged in -->
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Logout">Logout</a>
-                            </li>
+                            @if (Context.Session.GetInt32("UserId") != null && Context.Session.GetString("IsTwoFactorVerified") == "true")
+                            {
+                                <li class="nav-item">
+                                    <a class="nav-link text-dark" asp-area="" asp-controller="Account" asp-action="Logout">Logout</a>
+                                </li>
+                            }
+
                         }
                     </ul>
                 </div>
