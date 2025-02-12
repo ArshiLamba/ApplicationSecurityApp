@@ -36,6 +36,12 @@ namespace ApplicationSecurityApp.Controllers
             {
                 return View(model);
             }
+            string passwordStrength = model.GetPasswordStrength();
+            if (passwordStrength == "Weak ⚠️" || passwordStrength == "Moderate 😐")
+            {
+                ModelState.AddModelError("Password", "Password is too weak. Please choose a stronger password.");
+                return View(model);
+            }
 
             // Check if email already exists
             if (await _context.Members.AnyAsync(m => m.Email == model.Email))

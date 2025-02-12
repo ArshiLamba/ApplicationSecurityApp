@@ -44,9 +44,12 @@
 
     <div class="mb-3">
         <label asp-for="Password" class="form-label">Password</label>
-        <input asp-for="Password" type="password" class="form-control" required>
+        <input asp-for="Password" type="password" class="form-control" id="passwordInput" required>
         <span asp-validation-for="Password" class="text-danger"></span>
+        <p id="passwordStrength" class="mt-2" style="font-weight: bold;"></p>
     </div>
+
+   
 
     <div class="mb-3">
         <label asp-for="ConfirmPassword" class="form-label">Confirm Password</label>
@@ -78,4 +81,44 @@
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+
+    <script>
+document.addEventListener("DOMContentLoaded", function () {
+    const passwordInput = document.getElementById("passwordInput");
+    const strengthText = document.getElementById("passwordStrength");
+
+    passwordInput.addEventListener("input", function () {
+        const password = passwordInput.value;
+        const strength = getPasswordStrength(password);
+        strengthText.innerHTML = `Password Strength: <strong>${strength}</strong>`;
+        strengthText.style.color = getColor(strength);
+    });
+
+    function getPasswordStrength(password) {
+        let strength = 0;
+
+        if (password.length >= 12) strength++; // Minimum length requirement
+        if (/[a-z]/.test(password)) strength++; // Lowercase letter
+        if (/[A-Z]/.test(password)) strength++; // Uppercase letter
+        if (/\d/.test(password)) strength++; // Number
+        if (/[$!%*?&]/.test(password)) strength++; // Special character
+
+        if (strength <= 2) return "Weak ⚠️";
+        if (strength === 3) return "Moderate 😐";
+        if (strength >= 4) return "Strong ✅";
+
+        return "Very Weak ❌";
+    }
+
+    function getColor(strength) {
+        switch (strength) {
+            case "Weak ⚠️": return "red";
+            case "Moderate 😐": return "orange";
+            case "Strong ✅": return "green";
+            default: return "black";
+        }
+    }
+});
+</script>
+
 }

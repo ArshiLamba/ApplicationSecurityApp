@@ -196,6 +196,33 @@ namespace ApplicationSecurityApp.Controllers
                 return View(model);
             }
 
+            var now = DateTime.UtcNow;
+            const int minPasswordAgeDays = 1;   // Example: User must wait at least 1 day before changing the password again
+            const int maxPasswordAgeDays = 90;  // Example: Password expires after 90 days
+
+            // 🔴 Enforce Minimum Password Age
+            if (user.LastPasswordChange.HasValue)
+            {
+                var passwordAge = (now - user.LastPasswordChange.Value).TotalDays;
+                if (passwordAge < minPasswordAgeDays)
+                {
+                    ModelState.AddModelError("", $"You must wait at least {minPasswordAgeDays} day(s) before changing your password again.");
+                    return View(model);
+                }
+            }
+
+            // 🔴 Enforce Maximum Password Age
+            if (user.LastPasswordChange.HasValue)
+            {
+                var passwordAge = (now - user.LastPasswordChange.Value).TotalDays;
+                if (passwordAge > maxPasswordAgeDays)
+                {
+                    ModelState.AddModelError("", "Your password has expired. Please change it now.");
+                    return View(model);
+                }
+            }
+
+            // 🔴 Check Password History (Prevent reusing last 2 passwords)
             var recentPasswords = _context.PasswordHistories
                 .Where(ph => ph.UserId == user.Id)
                 .OrderByDescending(ph => ph.ChangedAt)
@@ -212,14 +239,15 @@ namespace ApplicationSecurityApp.Controllers
                 }
             }
 
+            // 🔴 Update the User's Password
             user.Password = HashPassword(model.NewPassword);
-            user.LastPasswordChange = DateTime.UtcNow;
+            user.LastPasswordChange = now;
 
             _context.PasswordHistories.Add(new PasswordHistory
             {
                 UserId = user.Id,
                 HashedPassword = user.Password,
-                ChangedAt = DateTime.UtcNow
+                ChangedAt = now
             });
 
             await _context.SaveChangesAsync();
@@ -227,6 +255,7 @@ namespace ApplicationSecurityApp.Controllers
             TempData["SuccessMessage"] = "Password changed successfully.";
             return RedirectToAction("Index", "Home");
         }
+
 
 
         [HttpGet]

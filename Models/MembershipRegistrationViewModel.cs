@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using ApplicationSecurityApp.Security;
-using System.Net; // Import EncryptionHelper
+using System.Net;
+using System.Text.RegularExpressions;
 
 namespace AceJobAgency.ViewModels
 {
@@ -58,6 +58,7 @@ namespace AceJobAgency.ViewModels
             var passwordHasher = new PasswordHasher<MembershipRegistrationViewModel>();
             return passwordHasher.HashPassword(this, Password);
         }
+
         // 🛡️ Sanitize inputs to prevent XSS attacks
         public void SanitizeInputs()
         {
@@ -66,6 +67,29 @@ namespace AceJobAgency.ViewModels
             this.NRIC = WebUtility.HtmlEncode(this.NRIC);
             this.Email = WebUtility.HtmlEncode(this.Email);
             this.WhoAmI = WebUtility.HtmlEncode(this.WhoAmI);
+        }
+
+        // 🔍 Check password strength
+        public string GetPasswordStrength()
+        {
+            if (string.IsNullOrWhiteSpace(Password))
+                return "Weak";
+
+            int score = 0;
+
+            if (Password.Length >= 12) score++; // Minimum length
+            if (Regex.IsMatch(Password, @"[a-z]")) score++; // Lowercase
+            if (Regex.IsMatch(Password, @"[A-Z]")) score++; // Uppercase
+            if (Regex.IsMatch(Password, @"\d")) score++; // Number
+            if (Regex.IsMatch(Password, @"[@$!%*?&]")) score++; // Special character
+
+            return score switch
+            {
+                5 => "Strong 💪",
+                4 => "Good 🙂",
+                3 => "Moderate 😐",
+                _ => "Weak ⚠️"
+            };
         }
     }
 }

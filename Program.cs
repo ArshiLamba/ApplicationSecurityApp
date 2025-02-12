@@ -23,13 +23,13 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         options.LoginPath = "/Account/Login";
         options.LogoutPath = "/Account/Logout";
-        options.ExpireTimeSpan = TimeSpan.FromMinutes(2); // Session timeout
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(5); // Session timeout
         options.SlidingExpiration = true; // Extend session if active
     });
 
 builder.Services.AddSession(options =>
 {
-    options.IdleTimeout = TimeSpan.FromMinutes(2); // Session expires after 2 mins
+    options.IdleTimeout = TimeSpan.FromMinutes(5); // Session expires after 2 mins
     options.Cookie.HttpOnly = true; // Prevent JS access
     options.Cookie.IsEssential = true;
 });
